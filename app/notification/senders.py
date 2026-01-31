@@ -7,6 +7,7 @@
 - 钉钉 (DingTalk)
 - 企业微信 (WeCom/WeWork)
 - Telegram
+- Discord
 - 邮件 (Email)
 - ntfy
 - Bark
@@ -592,6 +593,122 @@ def send_to_telegram(
                         f"{log_prefix}第 {i}/{len(batches)} 批次发送失败 [{report_type}]，错误：{result.get('description')}"
                     )
                     return False
+            else:
+                print(
+                    f"{log_prefix}第 {i}/{len(batches)} 批次发送失败 [{report_type}]，状态码：{response.status_code}"
+                )
+                return False
+        except Exception as e:
+            print(f"{log_prefix}第 {i}/{len(batches)} 批次发送出错 [{report_type}]：{e}")
+            return False
+
+    print(f"{log_prefix}所有 {len(batches)} 批次发送完成 [{report_type}]")
+
+    return True
+
+
+def send_to_discord(
+    webhook_url: str,
+    report_data: Dict,
+    report_type: str,
+    update_info: Optional[Dict] = None,
+    proxy_url: Optional[str] = None,
+    mode: str = "daily",
+    account_label: str = "",
+    *,
+    batch_size: int = 2000,
+    batch_interval: float = 1.0,
+    split_content_func: Callable = None,
+    rss_items: Optional[list] = None,
+    rss_new_items: Optional[list] = None,
+    ai_analysis: Any = None,
+    display_regions: Optional[Dict] = None,
+    standalone_data: Optional[Dict] = None,
+) -> bool:
+    """
+    发送到 Discord（支持分批发送，支持热榜+RSS合并+独立展示区）
+
+    Args:
+        webhook_url: Discord Webhook URL
+        report_data: 报告数据
+        report_type: 报告类型
+        update_info: 更新信息（可选）
+        proxy_url: 代理 URL（可选）
+        mode: 报告模式 (daily/current)
+        account_label: 账号标签（多账号时显示）
+        batch_size: 批次大小（字符数，Discord 限制 2000 字符）
+        batch_interval: 批次发送间隔（秒）
+        split_content_func: 内容分批函数
+        rss_items: RSS 统计条目列表（可选，用于合并推送）
+        rss_new_items: RSS 新增条目列表（可选，用于新增区块）
+        ai_analysis: AI 分析结果（可选）
+        display_regions: 显示区域配置（可选）
+        standalone_data: 独立展示区数据（可选）
+
+    Returns:
+        bool: 发送是否成功
+    """
+    headers = {"Content-Type": "application/json"}
+
+    proxies = None
+    if proxy_url:
+        proxies = {"http": proxy_url, "https": proxy_url}
+
+    # 日志前缀
+    log_prefix = f"Discord{account_label}" if account_label else "Discord"
+
+    # 渲染 AI 分析内容（如果有）
+    ai_content = None
+    ai_stats = None
+    if ai_analysis:
+        ai_content = _render_ai_analysis(ai_analysis, "discord")
+        # 提取 AI 分析统计数据（只要 AI 分析成功就显示）
+        if getattr(ai_analysis, "success", False):
+            ai_stats = {
+                "total_news": getattr(ai_analysis, "total_news", 0),
+                "analyzed_news": getattr(ai_analysis, "analyzed_news", 0),
+                "max_news_limit": getattr(ai_analysis, "max_news_limit", 0),
+                "hotlist_count": getattr(ai_analysis, "hotlist_count", 0),
+                "rss_count": getattr(ai_analysis, "rss_count", 0),
+            }
+
+    # 获取分批内容，预留批次头部空间
+    header_reserve = get_max_batch_header_size("discord")
+    batches = split_content_func(
+        report_data, "discord", update_info, max_bytes=batch_size - header_reserve, mode=mode,
+        rss_items=rss_items,
+        rss_new_items=rss_new_items,
+        ai_content=ai_content,
+        standalone_data=standalone_data,
+        ai_stats=ai_stats,
+        report_type=report_type,
+    )
+
+    # 统一添加批次头部（已预留空间，不会超限）
+    batches = add_batch_headers(batches, "discord", batch_size)
+
+    print(f"{log_prefix}消息分为 {len(batches)} 批次发送 [{report_type}]")
+
+    # 逐批发送
+    for i, batch_content in enumerate(batches, 1):
+        content_size = len(batch_content)
+        print(
+            f"发送{log_prefix}第 {i}/{len(batches)} 批次，大小：{content_size} 字符 [{report_type}]"
+        )
+
+        payload = {
+            "content": batch_content,
+        }
+
+        try:
+            response = requests.post(
+                webhook_url, headers=headers, json=payload, proxies=proxies, timeout=30
+            )
+            if response.status_code == 204:
+                print(f"{log_prefix}第 {i}/{len(batches)} 批次发送成功 [{report_type}]")
+                # 批次间间隔
+                if i < len(batches):
+                    time.sleep(batch_interval)
             else:
                 print(
                     f"{log_prefix}第 {i}/{len(batches)} 批次发送失败 [{report_type}]，状态码：{response.status_code}"

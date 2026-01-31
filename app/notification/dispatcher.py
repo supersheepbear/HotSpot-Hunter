@@ -42,6 +42,7 @@ def validate_paired_configs(configs: dict, channel_name: str, required_keys: lis
 from .senders import (
     send_to_bark,
     send_to_dingtalk,
+    send_to_discord,
     send_to_email,
     send_to_feishu,
     send_to_ntfy,
@@ -244,6 +245,13 @@ class NotificationDispatcher:
         # Telegram（需要配对验证）
         if self.config.get("TELEGRAM_BOT_TOKEN") and self.config.get("TELEGRAM_CHAT_ID"):
             results["telegram"] = self._send_telegram(
+                report_data, report_type, update_info, proxy_url, mode, rss_items, rss_new_items,
+                ai_analysis, display_regions, standalone_data
+            )
+
+        # Discord
+        if self.config.get("DISCORD_WEBHOOK_URL"):
+            results["discord"] = self._send_discord(
                 report_data, report_type, update_info, proxy_url, mode, rss_items, rss_new_items,
                 ai_analysis, display_regions, standalone_data
             )
@@ -496,6 +504,57 @@ class NotificationDispatcher:
                     mode=mode,
                     account_label=account_label,
                     batch_size=self.config.get("MESSAGE_BATCH_SIZE", 4000),
+                    batch_interval=self.config.get("BATCH_SEND_INTERVAL", 1.0),
+                    split_content_func=self.split_content_func,
+                    rss_items=rss_items if display_regions.get("RSS", True) else None,
+                    rss_new_items=rss_new_items if display_regions.get("RSS", True) else None,
+                    ai_analysis=ai_analysis if display_regions.get("AI_ANALYSIS", True) else None,
+                    display_regions=display_regions,
+                    standalone_data=standalone_data if display_regions.get("STANDALONE", False) else None,
+                )
+                results.append(result)
+
+        return any(results) if results else False
+
+    def _send_discord(
+        self,
+        report_data: Dict,
+        report_type: str,
+        update_info: Optional[Dict],
+        proxy_url: Optional[str],
+        mode: str,
+        rss_items: Optional[List[Dict]] = None,
+        rss_new_items: Optional[List[Dict]] = None,
+        ai_analysis: Optional[AIAnalysisResult] = None,
+        display_regions: Optional[Dict] = None,
+        standalone_data: Optional[Dict] = None,
+    ) -> bool:
+        """发送到 Discord（多账号，支持热榜+RSS合并+AI分析+独立展示区）"""
+        display_regions = display_regions or {}
+        if not display_regions.get("HOTLIST", True):
+            report_data = {"stats": [], "failed_ids": [], "new_titles": [], "id_to_name": {}}
+
+        discord_webhooks = parse_multi_account_config(self.config.get("DISCORD_WEBHOOK_URL", ""))
+
+        if not discord_webhooks:
+            return False
+
+        # 限制账号数量
+        discord_webhooks = limit_accounts(discord_webhooks, self.max_accounts, "Discord")
+
+        results = []
+        for i, webhook_url in enumerate(discord_webhooks):
+            if webhook_url:
+                account_label = f"账号{i+1}" if len(discord_webhooks) > 1 else ""
+                result = send_to_discord(
+                    webhook_url=webhook_url,
+                    report_data=report_data,
+                    report_type=report_type,
+                    update_info=update_info,
+                    proxy_url=proxy_url,
+                    mode=mode,
+                    account_label=account_label,
+                    batch_size=2000,
                     batch_interval=self.config.get("BATCH_SEND_INTERVAL", 1.0),
                     split_content_func=self.split_content_func,
                     rss_items=rss_items if display_regions.get("RSS", True) else None,
