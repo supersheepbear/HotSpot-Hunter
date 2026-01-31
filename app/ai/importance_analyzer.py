@@ -70,14 +70,23 @@ def analyze_news_importance(
 }}
 
 重要性评级标准：
-- critical（关键）: 对国家、社会、经济有重大影响，涉及重大政策、突发事件、重大事故等
-- high（重要）: 对行业、地区有重要影响，涉及重要政策变化、重大商业事件等
-- medium（中等）: 有一定关注度，但影响范围有限
-- low（一般）: 普通新闻，关注度较低
-
-特别注意：
-- 股市行情类新闻（如"创业板指跌超1%"、"沪指涨0.17%"、"深成指跌0.44%"等日常股市波动）应评为"low"级别
-- 仅包含股市指数涨跌、个股涨跌、板块涨跌等日常行情信息的新闻，不具有重大意义，应评为"low"
+- critical（关键）: 与中美关系、中美两国国家层面直接相关的重大新闻，包括但不限于：
+  * 国家级政策、外交、军事、经济、科技博弈
+  * 对中美社会、经济、全球格局产生重大影响的事件
+  * 中美任一方的突发重大事件、重大事故、重大决策
+- high（重要）: 不直接属于中美对抗核心，但仍具有国家级或高度社会影响力的新闻，包括：
+  * 其他国家的国家级重大政策、战争、外交、经济危机
+  * 中美国内高度热点的民间/社会事件（广泛讨论、强情绪、强舆论）
+  * 可能间接影响中美关系或全球秩序的重要事件
+- medium（中等）: 具有一定关注度，但影响范围或持续性有限的新闻，包括：
+  * 行业层面的重要变化
+  * 地区性政策、商业、社会事件
+  * 国际新闻中非核心国家或次级议题
+- low（一般）: 普通新闻或信息性内容，关注度和影响力较低，包括：
+  * 日常社会新闻
+  * 一般商业动态、娱乐、花边资讯
+  * 对宏观局势无明显影响的事件
+  * 日常股市行情波动（如"创业板指跌超1%"、"沪指涨0.17%"等）
 
 新闻信息：
 - 标题: {title}
@@ -139,7 +148,7 @@ def batch_analyze_importance(
     news_items: list,
     ai_config: Optional[Dict[str, Any]] = None,
     get_time_func=None,
-    batch_size: int = 20,
+    batch_size: int = 5,
 ) -> Dict[tuple, str]:
     """
     批量分析新闻重要性（真正的批量AI调用）
@@ -207,10 +216,21 @@ def batch_analyze_importance(
                 rank = item.get("rank", 0)
                 
                 if title and platform_id:
+                    # 清理HTML标签和特殊字符，避免JSON解析失败
+                    import re
+                    clean_title = re.sub(r'<br\s*/?>', ' ', title)  # <br/> -> 空格
+                    clean_title = re.sub(r'<[^>]+>', '', clean_title)  # 移除其他HTML标签
+                    clean_title = clean_title.replace('\n', ' ').replace('\r', ' ')  # 换行符
+                    clean_title = ' '.join(clean_title.split())  # 合并多余空格
+                    
+                    # 截断过长标题（保留前200字符）
+                    if len(clean_title) > 200:
+                        clean_title = clean_title[:200] + "..."
+                    
                     news_list_text.append(
-                        f"{idx + 1}. 标题: {title}\n   平台: {platform_name}\n   排名: {rank}"
+                        f"{idx + 1}. 标题: {clean_title}\n   平台: {platform_name}\n   排名: {rank}"
                     )
-                    news_keys.append((title, platform_id))
+                    news_keys.append((title, platform_id))  # 保存原始标题用于匹配
             
             if not news_list_text:
                 continue
@@ -225,14 +245,23 @@ def batch_analyze_importance(
 }}
 
 重要性评级标准：
-- critical（关键）: 对国家、社会、经济有重大影响，涉及重大政策、突发事件、重大事故等
-- high（重要）: 对行业、地区有重要影响，涉及重要政策变化、重大商业事件等
-- medium（中等）: 有一定关注度，但影响范围有限
-- low（一般）: 普通新闻，关注度较低
-
-特别注意：
-- 股市行情类新闻（如"创业板指跌超1%"、"沪指涨0.17%"、"深成指跌0.44%"等日常股市波动）应评为"low"级别
-- 仅包含股市指数涨跌、个股涨跌、板块涨跌等日常行情信息的新闻，不具有重大意义，应评为"low"
+- critical（关键）: 与中美关系、中美两国国家层面直接相关的重大新闻，包括但不限于：
+  * 国家级政策、外交、军事、经济、科技博弈
+  * 对中美社会、经济、全球格局产生重大影响的事件
+  * 中美任一方的突发重大事件、重大事故、重大决策
+- high（重要）: 不直接属于中美对抗核心，但仍具有国家级或高度社会影响力的新闻，包括：
+  * 其他国家的国家级重大政策、战争、外交、经济危机
+  * 中美国内高度热点的民间/社会事件（广泛讨论、强情绪、强舆论）
+  * 可能间接影响中美关系或全球秩序的重要事件
+- medium（中等）: 具有一定关注度，但影响范围或持续性有限的新闻，包括：
+  * 行业层面的重要变化
+  * 地区性政策、商业、社会事件
+  * 国际新闻中非核心国家或次级议题
+- low（一般）: 普通新闻或信息性内容，关注度和影响力较低，包括：
+  * 日常社会新闻
+  * 一般商业动态、娱乐、花边资讯
+  * 对宏观局势无明显影响的事件
+  * 日常股市行情波动（如"创业板指跌超1%"、"沪指涨0.17%"等）
 
 需要分析的新闻列表：
 {chr(10).join(news_list_text)}
@@ -266,16 +295,33 @@ def batch_analyze_importance(
                 if "results" in data and isinstance(data["results"], list):
                     # 新格式：results数组
                     for result in data["results"]:
-                        title = result.get("title", "")
+                        ai_title = result.get("title", "")
                         importance = result.get("importance", "").lower()
                         
                         # 验证重要性值
                         if importance in ["critical", "high", "medium", "low"]:
-                            # 找到对应的key（精确匹配标题）
+                            # 清理AI返回的标题用于匹配
+                            import re
+                            ai_title_clean = re.sub(r'<[^>]+>', '', ai_title)
+                            ai_title_clean = ' '.join(ai_title_clean.split())
+                            
+                            # 找到对应的key（支持模糊匹配）
+                            matched = False
                             for key in news_keys:
-                                if key[0] == title:
+                                original_title = key[0]
+                                original_clean = re.sub(r'<[^>]+>', '', original_title)
+                                original_clean = ' '.join(original_clean.split())
+                                
+                                # 精确匹配或前200字符匹配
+                                if (original_title == ai_title or 
+                                    original_clean == ai_title_clean or
+                                    original_clean[:200] == ai_title_clean[:200]):
                                     results[key] = importance
+                                    matched = True
                                     break
+                            
+                            if not matched:
+                                print(f"[重要性分析] 警告：无法匹配标题: {ai_title[:50]}...")
                 elif isinstance(data, dict):
                     # 兼容格式1：直接是字典 {title: importance}
                     for key in news_keys:

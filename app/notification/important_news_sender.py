@@ -50,30 +50,92 @@ def send_important_news_to_all_channels(
     
     # 如果没有提供 split_content_func，使用默认实现
     if split_content_func is None:
-        def default_split_func(content: str, size: int) -> List[str]:
+        # 导入内容渲染和分批函数
+        from app.notification.renderer import (
+            render_feishu_content,
+            render_dingtalk_content,
+        )
+        from app.notification.batch import truncate_to_bytes
+
+        def default_split_func(
+            report_data: Dict,
+            channel: str,
+            update_info: Optional[Dict] = None,
+            max_bytes: int = 4000,
+            mode: str = "daily",
+            **kwargs
+        ) -> List[str]:
             """默认的内容分批函数"""
+            # 根据渠道选择渲染函数
+            if channel == "feishu":
+                content = render_feishu_content(report_data, update_info, mode)
+            elif channel == "dingtalk":
+                content = render_dingtalk_content(report_data, update_info, mode)
+            else:
+                # 其他渠道使用简单的文本格式（Discord, Telegram等）
+                content = ""
+
+                # 处理 stats 中的重要新闻
+                if report_data.get("stats"):
+                    content += "📰 **重要新闻推送**\n\n"
+                    for stat in report_data["stats"]:
+                        word = stat.get("word", "")
+                        titles = stat.get("titles", [])
+                        if titles:
+                            content += f"**{word}** ({len(titles)} 条)\n\n"
+                            for title_info in titles[:20]:  # 限制每组最多20条
+                                title = title_info.get("title", "")
+                                source = title_info.get("source_name", "")
+                                url = title_info.get("url", "")
+
+                                if url:
+                                    content += f"• [{title}]({url}) - {source}\n"
+                                else:
+                                    content += f"• {title} - {source}\n"
+                            content += "\n"
+
+                # 处理 new_titles（如果有）
+                elif report_data.get("new_titles"):
+                    content += "📰 重要新闻推送\n\n"
+                    for platform_id, titles in report_data["new_titles"].items():
+                        platform_name = report_data.get("id_to_name", {}).get(platform_id, platform_id)
+                        content += f"【{platform_name}】\n"
+                        for title_info in titles[:10]:
+                            title = title_info.get("title", "")
+                            content += f"• {title}\n"
+                        content += "\n"
+
+            # 分批处理
             if not content:
                 return []
+
             content_bytes = content.encode('utf-8')
+            if len(content_bytes) <= max_bytes:
+                return [content]
+
+            # 需要分批
             batches = []
-            for i in range(0, len(content_bytes), size):
-                batch_bytes = content_bytes[i:i+size]
-                # 尝试在最后一个完整字符处截断
-                try:
-                    batch = batch_bytes.decode('utf-8')
-                except UnicodeDecodeError:
-                    # 如果截断位置不完整，向前查找完整字符
-                    for j in range(len(batch_bytes) - 1, max(0, len(batch_bytes) - 4), -1):
-                        try:
-                            batch = batch_bytes[:j].decode('utf-8')
-                            break
-                        except UnicodeDecodeError:
-                            continue
-                    else:
-                        batch = batch_bytes.decode('utf-8', errors='ignore')
-                batches.append(batch)
+            current_batch = ""
+            current_size = 0
+
+            for line in content.split('\n'):
+                line_bytes = (line + '\n').encode('utf-8')
+                line_size = len(line_bytes)
+
+                if current_size + line_size > max_bytes:
+                    if current_batch:
+                        batches.append(current_batch)
+                    current_batch = line + '\n'
+                    current_size = line_size
+                else:
+                    current_batch += line + '\n'
+                    current_size += line_size
+
+            if current_batch:
+                batches.append(current_batch)
+
             return batches
-        
+
         split_content_func = default_split_func
     
     dispatcher = NotificationDispatcher(

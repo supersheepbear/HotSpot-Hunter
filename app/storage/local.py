@@ -232,8 +232,13 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                     print("[重要性分析] 没有需要分析的新闻")
                     return
 
+                # 加载分析配置
+                from app.utils.analysis_config_loader import load_analysis_config
+                analysis_config = load_analysis_config()
+                max_analyze_per_run = analysis_config.get("max_analyze_per_run", 100)
+                batch_size = analysis_config.get("batch_size", 20)
+                
                 # 限制每次分析的数量，避免触发API速率限制
-                max_analyze_per_run = 100
                 if len(news_to_analyze) > max_analyze_per_run:
                     print(f"[重要性分析] 发现 {len(news_to_analyze)} 条新闻，限制本次分析 {max_analyze_per_run} 条")
                     news_to_analyze = news_to_analyze[:max_analyze_per_run]
@@ -246,7 +251,7 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                     news_items=news_to_analyze,
                     ai_config=ai_config,
                     get_time_func=get_time_func,
-                    batch_size=20,
+                    batch_size=batch_size,
                 )
                 
                 # 保存结果到数据库，并收集重要新闻
@@ -263,8 +268,9 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                     ):
                         saved_count += 1
                         
-                        # 如果是重要新闻（critical 或 high），收集信息
-                        if importance in ["critical", "high"]:
+                        # 如果是配置中指定的重要新闻级别，收集信息
+                        push_levels = analysis_config.get("push_importance_levels", ["critical", "high"])
+                        if importance in push_levels:
                             # 查找新闻的详细信息
                             platform_name = data.id_to_name.get(platform_id, platform_id)
                             news_item = None
@@ -281,12 +287,24 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                                 "importance": importance,
                                 "url": news_item.url if news_item else "",
                             })
+                            
+                            # 调试：输出平台信息
+                            print(f"[调试] 收集重要新闻: {title[:30]}... | 平台: {platform_name} ({platform_id})")
                 
                 print(f"[重要性分析] 完成，成功分析并保存 {saved_count} 条新闻的重要性")
                 
                 # 如果有重要新闻，推送到所有配置的渠道
                 if important_news:
-                    print(f"[重要新闻推送] 发现 {len(important_news)} 条重要新闻（critical/high），准备推送到所有配置的渠道...")
+                    # 限制推送数量
+                    max_push_per_run = analysis_config.get("max_push_per_run", 50)
+                    push_levels_str = "/".join(analysis_config.get("push_importance_levels", ["critical", "high"]))
+                    
+                    if len(important_news) > max_push_per_run:
+                        print(f"[重要新闻推送] 发现 {len(important_news)} 条重要新闻（{push_levels_str}），限制推送 {max_push_per_run} 条")
+                        important_news = important_news[:max_push_per_run]
+                    else:
+                        print(f"[重要新闻推送] 发现 {len(important_news)} 条重要新闻（{push_levels_str}），准备推送到所有配置的渠道...")
+                    
                     try:
                         from app.utils.notification_config_loader import load_notification_config
                         from app.notification.important_news_sender import send_important_news_to_all_channels
@@ -453,8 +471,13 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                 print("[重要性分析] 没有需要分析的新闻")
                 return
 
+            # 加载分析配置
+            from app.utils.analysis_config_loader import load_analysis_config
+            analysis_config = load_analysis_config()
+            max_analyze_per_run = analysis_config.get("max_analyze_per_run", 100)
+            batch_size = analysis_config.get("batch_size", 20)
+            
             # 限制每次分析的数量，避免触发API速率限制
-            max_analyze_per_run = 100
             if len(news_to_analyze) > max_analyze_per_run:
                 print(f"[重要性分析] 发现 {len(news_to_analyze)} 条新闻，限制本次分析 {max_analyze_per_run} 条")
                 news_to_analyze = news_to_analyze[:max_analyze_per_run]
@@ -467,7 +490,7 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                 news_items=news_to_analyze,
                 ai_config=ai_config,
                 get_time_func=get_time_func,
-                batch_size=20,
+                batch_size=batch_size,
             )
             
             # 保存结果到数据库，并收集重要新闻
@@ -580,6 +603,7 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                         (notification_config.get("NTFY_SERVER_URL") and notification_config.get("NTFY_TOPIC")) or
                         notification_config.get("BARK_URL") or
                         notification_config.get("SLACK_WEBHOOK_URL") or
+                        notification_config.get("DISCORD_WEBHOOK_URL") or
                         notification_config.get("GENERIC_WEBHOOK_URL") or
                         (notification_config.get("EMAIL_FROM") and notification_config.get("EMAIL_TO"))
                     )
@@ -587,36 +611,13 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                     if not has_configured_channels:
                         print(f"[重要新闻推送] 未配置任何推送渠道，跳过推送")
                     else:
-                        # 创建内容分批函数
-                        def split_content_func(content: str, size: int):
-                            """内容分批函数"""
-                            if not content:
-                                return []
-                            content_bytes = content.encode('utf-8')
-                            batches = []
-                            for i in range(0, len(content_bytes), size):
-                                batch_bytes = content_bytes[i:i+size]
-                                try:
-                                    batch = batch_bytes.decode('utf-8')
-                                except UnicodeDecodeError:
-                                    # 如果截断位置不完整，向前查找完整字符
-                                    for j in range(len(batch_bytes) - 1, max(0, len(batch_bytes) - 4), -1):
-                                        try:
-                                            batch = batch_bytes[:j].decode('utf-8')
-                                            break
-                                        except UnicodeDecodeError:
-                                            continue
-                                    else:
-                                        batch = batch_bytes.decode('utf-8', errors='ignore')
-                                batches.append(batch)
-                            return batches
-                        
                         # 推送到所有配置的渠道（同步执行）
+                        # 不传递 split_content_func，使用默认实现
                         results = send_important_news_to_all_channels(
                             important_news=news_to_push,
                             notification_config=notification_config,
                             get_time_func=get_time_func,
-                            split_content_func=split_content_func,
+                            split_content_func=None,
                         )
                         
                         # 输出推送结果

@@ -9,61 +9,30 @@
 # 注意：未在此列表中的平台默认为 news 类型
 # ═══════════════════════════════════════════════════════════════
 
-# 论坛/社区平台
+# 论坛/社区平台（聚焦中美关系、国际政治、社会热点）
 forums:
-  - v2ex
-  - v2ex-share
-  - zhihu
-  - weibo
-  - hupu
-  - tieba
-  - douyin
-  - pcbeta
-  - pcbeta-windows11
-  - hackernews
-  - producthunt
-  - github
-  - github-trending-today
-  - bilibili
-  - bilibili-hot-search
-  - nowcoder
-  - juejin
-  - chongbuluo
-  - chongbuluo-latest
-  - chongbuluo-hot
-  - douban
-  - freebuf
+  - zhihu          # 知乎 - 中国社会热点深度讨论
+  - hupu           # 虎扑 - 中国民间舆论风向标
+  - hackernews     # Hacker News - 美国科技界视角
+  - github         # GitHub - 全球开发者/科技趋势
+  - bilibili       # B站 - 中国年轻人热点
 
-# 新闻网站平台
+# 新闻网站平台（聚焦中美关系、国家级政策、国际重大事件）
 news:
-  - zaobao
-  - mktnews
-  - mktnews-flash
-  - wallstreetcn
-  - wallstreetcn-quick
-  - wallstreetcn-news
-  - wallstreetcn-hot
-  - 36kr
-  - 36kr-quick
-  - 36kr-renqi
-  - toutiao
-  - ithome
-  - thepaper
-  - sputniknewscn
-  - cankaoxiaoxi
-  - cls
-  - cls-telegraph
-  - cls-depth
-  - cls-hot
-  - gelonghui
-  - fastbull
-  - fastbull-express
-  - fastbull-news
-  - solidot
-  - kaopu
-  - jin10
-  - baidu
-  - sspai
-  - ifeng
-  - tencent
-  - tencent-hot
+  # === 国际新闻（中美关系核心） ===
+  - zaobao         # 联合早报 - 第三方视角中美关系
+  - sputniknewscn  # 卫星通讯社 - 俄罗斯视角国际局势
+  - cankaoxiaoxi   # 参考消息 - 中国官方国际新闻
+  
+  # === 中国权威媒体（国家级政策） ===
+  - thepaper       # 澎湃新闻 - 深度报道、重大事件
+  - ifeng          # 凤凰网 - 时政国际新闻
+  - tencent        # 腾讯新闻 - 中国主流热点
+  
+  # === 财经新闻（中美经济、贸易战） ===
+  - wallstreetcn   # 华尔街见闻 - 中美金融市场
+  - cls            # 财联社 - 中国财经快讯
+  
+  # === 科技新闻（中美科技博弈） ===
+  - 36kr           # 36氪 - 中美科技商业
+  - ithome         # IT之家 - 科技政策动态
