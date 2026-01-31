@@ -179,6 +179,32 @@ def format_title_for_platform(
 
         return result
 
+    elif platform == "discord":
+        # Discord 禁用链接预览：直接用 <> 包裹 URL
+        if link_url:
+            # 方法1：用 <> 包裹 URL 禁用预览
+            formatted_title = f"{cleaned_title} <{link_url}>"
+        else:
+            formatted_title = cleaned_title
+
+        title_prefix = "🆕 " if title_data.get("is_new") else ""
+
+        if show_source:
+            result = f"[{title_data['source_name']}] {title_prefix}{formatted_title}"
+        elif show_keyword and keyword:
+            result = f"**[{keyword}]** {title_prefix}{formatted_title}"
+        else:
+            result = f"{title_prefix}{formatted_title}"
+
+        if rank_display:
+            result += f" {rank_display}"
+        if title_data["time_display"]:
+            result += f" `- {title_data['time_display']}`"
+        if title_data["count"] > 1:
+            result += f" `({title_data['count']}次)`"
+
+        return result
+
     elif platform == "slack":
         # Slack 使用 mrkdwn 格式
         if link_url:

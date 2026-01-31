@@ -52,6 +52,7 @@ def load_notification_config(config_path: Optional[str] = None) -> Dict[str, Any
         "DINGTALK_BATCH_SIZE": 20000,
         "MESSAGE_BATCH_SIZE": 4000,
         "BARK_BATCH_SIZE": 3600,
+        "DISCORD_BATCH_SIZE": 1900,
         "WEWORK_MSG_TYPE": "markdown",
         "DISPLAY": {
             "REGIONS": {

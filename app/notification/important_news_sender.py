@@ -9,6 +9,56 @@ from typing import List, Dict, Optional, Callable
 from datetime import datetime
 
 
+def _categorize_news(stats: List[Dict]) -> Dict[str, List[Dict]]:
+    """
+    根据关键词将新闻分类
+
+    Args:
+        stats: 新闻统计数据
+
+    Returns:
+        分类后的新闻字典
+    """
+    categories = {
+        "政治外交": [],
+        "经济金融": [],
+        "科技创新": [],
+        "社会民生": [],
+        "国际关系": [],
+        "自然灾害": [],
+        "其他": []
+    }
+
+    # 关键词映射
+    keyword_map = {
+        "政治外交": ["政策", "外交", "政府", "国务院", "会议", "法律", "政治"],
+        "经济金融": ["经济", "金融", "股市", "投资", "银行", "货币", "贸易", "GDP", "财报", "上市", "融资"],
+        "科技创新": ["科技", "AI", "人工智能", "芯片", "技术", "互联网", "软件", "硬件", "创新", "研发"],
+        "社会民生": ["社会", "教育", "医疗", "就业", "民生", "安全", "事故"],
+        "国际关系": ["国际", "战争", "冲突", "制裁", "协议", "峰会"],
+        "自然灾害": ["地震", "台风", "洪水", "灾害", "疫情", "火灾"]
+    }
+
+    for stat in stats:
+        titles = stat.get("titles", [])
+        word = stat.get("word", "")
+
+        # 根据关键词判断分类
+        categorized = False
+        for category, keywords in keyword_map.items():
+            if any(kw in word or any(kw in title.get("title", "") for title in titles) for kw in keywords):
+                categories[category].extend(titles)
+                categorized = True
+                break
+
+        # 如果没有匹配到分类，放入"其他"
+        if not categorized:
+            categories["其他"].extend(titles)
+
+    # 移除空分类
+    return {k: v for k, v in categories.items() if v}
+
+
 def send_important_news_to_all_channels(
     important_news: List[Dict],
     notification_config: Dict,
@@ -77,22 +127,47 @@ def send_important_news_to_all_channels(
 
                 # 处理 stats 中的重要新闻
                 if report_data.get("stats"):
-                    content += "📰 **重要新闻推送**\n\n"
-                    for stat in report_data["stats"]:
-                        word = stat.get("word", "")
-                        titles = stat.get("titles", [])
-                        if titles:
-                            content += f"**{word}** ({len(titles)} 条)\n\n"
-                            for title_info in titles[:20]:  # 限制每组最多20条
-                                title = title_info.get("title", "")
-                                source = title_info.get("source_name", "")
-                                url = title_info.get("url", "")
+                    # 按分类整理新闻
+                    categorized_news = _categorize_news(report_data["stats"])
 
-                                if url:
-                                    content += f"• [{title}]({url}) - {source}\n"
-                                else:
-                                    content += f"• {title} - {source}\n"
-                            content += "\n"
+                    # 统计总数
+                    total_count = sum(len(news_list) for news_list in categorized_news.values())
+
+                    # 标题
+                    content += "━━━━━━━━━━━━━━\n"
+                    content += f"📰 重要新闻 ({total_count}条)\n"
+                    content += "━━━━━━━━━━━━━━\n\n"
+
+                    # 分类图标映射
+                    category_icons = {
+                        "政治外交": "🔴",
+                        "经济金融": "💰",
+                        "科技创新": "💻",
+                        "社会民生": "👥",
+                        "国际关系": "🌍",
+                        "自然灾害": "⚠️",
+                        "其他": "📌"
+                    }
+
+                    # 按分类输出
+                    for category, news_list in categorized_news.items():
+                        if not news_list:
+                            continue
+
+                        icon = category_icons.get(category, "📌")
+                        content += f"{icon} **{category}**\n"
+
+                        for title_info in news_list[:20]:  # 每类最多20条
+                            title = title_info.get("title", "")
+                            source = title_info.get("source_name", "")
+                            url = title_info.get("url", "")
+
+                            if url:
+                                content += f"• {title} <{url}> | {source}\n"
+                            else:
+                                content += f"• {title} | {source}\n"
+
+                        content += "\n"
 
                 # 处理 new_titles（如果有）
                 elif report_data.get("new_titles"):

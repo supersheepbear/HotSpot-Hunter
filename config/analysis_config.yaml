@@ -16,9 +16,9 @@ push:
   # 推送哪些重要性级别的新闻（可选：critical, high, medium, low）
   importance_levels:
     - critical  # 关键级别（中美新闻、国家级重大新闻）
-    - high      # 重要级别（全球新闻、国家新闻、热点新闻）
+    # - high      # 重要级别（全球新闻、国家新闻、热点新闻）
     # - medium  # 中等级别（取消注释可启用）
     # - low     # 一般级别（取消注释可启用）
-  
+
   # 每次运行最多推送多少条新闻（避免刷屏）
-  max_push_per_run: 300
+  max_push_per_run: 30

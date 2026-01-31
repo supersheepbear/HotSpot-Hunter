@@ -70,6 +70,7 @@ def load_platforms() -> List[Union[str, Tuple[str, str]]]:
         
         # 构建平台名称映射
         name_mapping = {
+            # 论坛社区
             "v2ex": "V2EX",
             "zhihu": "知乎",
             "weibo": "微博",
@@ -77,16 +78,38 @@ def load_platforms() -> List[Union[str, Tuple[str, str]]]:
             "tieba": "百度贴吧",
             "douyin": "抖音",
             "bilibili": "B站",
+            "douban": "豆瓣",
+            "hackernews": "Hacker News",
+            "github": "GitHub",
+            # 国际新闻
+            "zaobao": "联合早报",
+            "sputniknewscn": "卫星通讯社",
+            "cankaoxiaoxi": "参考消息",
+            "bbc": "BBC中文",
+            "reuters": "路透社",
+            # 中国媒体
+            "thepaper": "澎湃新闻",
+            "ifeng": "凤凰网",
+            "tencent": "腾讯新闻",
+            "sina": "新浪新闻",
+            "163": "网易新闻",
+            # 财经新闻
+            "wallstreetcn": "华尔街见闻",
+            "cls": "财联社",
+            "caixin": "财新网",
+            "yicai": "第一财经",
+            # 科技新闻
+            "36kr": "36氪",
+            "ithome": "IT之家",
+            "cnbeta": "cnBeta",
+            "geekpark": "极客公园",
+            "leiphone": "雷锋网",
+            # 其他
+            "guancha": "观察者网",
+            "huxiu": "虎嗅",
             "nowcoder": "牛客网",
             "juejin": "掘金",
-            "douban": "豆瓣",
-            "zaobao": "联合早报",
-            "36kr": "36氪",
             "toutiao": "今日头条",
-            "ithome": "IT之家",
-            "thepaper": "澎湃新闻",
-            "cls": "财联社",
-            "tencent": "腾讯新闻",
             "sspai": "少数派",
             "baidu": "百度",
         }
