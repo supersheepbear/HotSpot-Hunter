@@ -94,3 +94,12 @@ CREATE INDEX IF NOT EXISTS idx_crawl_status_record ON crawl_source_status(crawl_
 
 -- 排名历史索引
 CREATE INDEX IF NOT EXISTS idx_rank_history_news ON rank_history(news_item_id);
+
+-- 推送状态索引（用于快速查询已推送的新闻）
+CREATE INDEX IF NOT EXISTS idx_news_pushed ON news_items(has_been_pushed);
+
+-- 标准化标题索引（用于跨平台去重查询）
+CREATE INDEX IF NOT EXISTS idx_news_normalized_title ON news_items(normalized_title) WHERE normalized_title != '';
+
+-- 重要性索引（用于快速查询重要新闻）
+CREATE INDEX IF NOT EXISTS idx_news_importance ON news_items(importance) WHERE importance != '';

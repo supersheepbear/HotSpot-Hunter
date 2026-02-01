@@ -127,37 +127,28 @@ def send_important_news_to_all_channels(
 
                 # 处理 stats 中的重要新闻
                 if report_data.get("stats"):
-                    # 按分类整理新闻
-                    categorized_news = _categorize_news(report_data["stats"])
+                    # stats 已经在 _convert_important_news_to_report_data 中按类别分组
+                    # 直接使用，不需要再次调用 _categorize_news
 
                     # 统计总数
-                    total_count = sum(len(news_list) for news_list in categorized_news.values())
+                    total_count = sum(len(stat.get("titles", [])) for stat in report_data["stats"])
 
                     # 标题
                     content += "━━━━━━━━━━━━━━\n"
                     content += f"📰 重要新闻 ({total_count}条)\n"
                     content += "━━━━━━━━━━━━━━\n\n"
 
-                    # 分类图标映射
-                    category_icons = {
-                        "政治外交": "🔴",
-                        "经济金融": "💰",
-                        "科技创新": "💻",
-                        "社会民生": "👥",
-                        "国际关系": "🌍",
-                        "自然灾害": "⚠️",
-                        "其他": "📌"
-                    }
+                    # 按分类输出（stats 中每个元素就是一个类别）
+                    for stat in report_data["stats"]:
+                        category_name = stat.get("word", "")  # 例如 "🔴 政治外交"
+                        news_list = stat.get("titles", [])
 
-                    # 按分类输出
-                    for category, news_list in categorized_news.items():
                         if not news_list:
                             continue
 
-                        icon = category_icons.get(category, "📌")
-                        content += f"{icon} **{category}**\n"
+                        content += f"{category_name}\n"
 
-                        for title_info in news_list[:20]:  # 每类最多20条
+                        for title_info in news_list:
                             title = title_info.get("title", "")
                             source = title_info.get("source_name", "")
                             url = title_info.get("url", "")
@@ -251,62 +242,131 @@ def send_important_news_to_all_channels(
 def _convert_important_news_to_report_data(important_news: List[Dict]) -> Dict:
     """
     将重要新闻列表转换为 report_data 格式
-    
+
     Args:
         important_news: 重要新闻列表
-    
+
     Returns:
         report_data 格式的字典
     """
-    # 按重要性分组
-    critical_news = [n for n in important_news if n.get("importance") == "critical"]
-    high_news = [n for n in important_news if n.get("importance") == "high"]
-    
-    # 构建 stats（按重要性分组）
+    # 关键词映射（用于分类）- 包含中英文关键词
+    keyword_map = {
+        "政治外交": [
+            # 中文
+            "政策", "外交", "政府", "国务院", "会议", "法律", "政治", "部长", "官员", "党",
+            "防务", "预算", "税", "增值税", "立法", "议会", "选举", "投票", "民主党", "共和党",
+            # 英文
+            "government", "policy", "election", "vote", "congress", "senate", "minister"
+        ],
+        "经济金融": [
+            # 中文
+            "经济", "金融", "股市", "投资", "银行", "货币", "贸易", "GDP", "财报", "上市",
+            "融资", "交付", "销量", "出口", "进口", "半导体", "订单", "市值", "估值",
+            # 英文
+            "economy", "finance", "stock", "market", "investment", "trade", "export", "import"
+        ],
+        "科技创新": [
+            # 中文
+            "科技", "AI", "人工智能", "芯片", "技术", "互联网", "软件", "硬件", "创新", "研发",
+            "卫星", "数据", "算法", "模型", "开源", "GitHub", "microsoft", "anthropics", "BitNet",
+            "歼-20", "战机", "无人机", "机器人", "自动驾驶", "光合", "能源",
+            # 英文
+            "AI", "technology", "software", "hardware", "algorithm", "model", "bot", "botnet",
+            "Wikipedia", "WhatsApp", "GPS", "autonomous", "drone", "prompt injection", "social media"
+        ],
+        "社会民生": [
+            # 中文
+            "社会", "教育", "医疗", "就业", "民生", "安全", "事故", "诊疗", "中毒", "死亡",
+            "入狱", "犯罪", "案件", "毒药", "附片", "救心丸",
+            # 英文
+            "health", "education", "safety", "dies", "death", "smallpox", "eradicate"
+        ],
+        "国际关系": [
+            # 中文
+            "国际", "战争", "冲突", "制裁", "协议", "峰会", "伊朗", "以色列", "加沙", "乌克兰",
+            "俄", "美国", "欧盟", "印度", "谈判", "军演", "袭击", "停火",
+            # 英文
+            "international", "war", "conflict", "Iran", "Israel", "Gaza", "Ukraine", "Russia"
+        ],
+        "自然灾害": [
+            # 中文
+            "地震", "台风", "洪水", "灾害", "疫情", "火灾", "崩塌", "矿难",
+            # 英文
+            "disaster", "earthquake", "flood", "typhoon", "pandemic"
+        ],
+        "体育赛事": [
+            # 中文
+            "澳网", "冠军", "夺冠", "比赛", "运动", "球", "赛", "莱巴金娜", "萨巴伦卡",
+            "大满贯", "决赛", "网球",
+            # 英文
+            "sport", "champion", "game", "match", "tennis", "Australian Open"
+        ],
+    }
+
+    # 按类别分组新闻
+    categorized_news = {category: [] for category in keyword_map.keys()}
+    categorized_news["其他"] = []
+
+    for news in important_news:
+        title = news.get("title", "")
+        categorized = False
+
+        # 根据标题内容判断分类
+        for category, keywords in keyword_map.items():
+            if any(kw in title for kw in keywords):
+                categorized_news[category].append(news)
+                categorized = True
+                break
+
+        # 如果没有匹配到分类，放入"其他"
+        if not categorized:
+            categorized_news["其他"].append(news)
+
+    # 构建 stats（按类别分组）
     stats = []
-    
-    # Critical 级别新闻
-    if critical_news:
+
+    # 类别图标映射
+    category_icons = {
+        "政治外交": "🔴",
+        "经济金融": "💰",
+        "科技创新": "💻",
+        "社会民生": "👥",
+        "国际关系": "🌍",
+        "自然灾害": "⚠️",
+        "体育赛事": "🏆",
+        "其他": "📌"
+    }
+
+    for category, news_list in categorized_news.items():
+        if not news_list:
+            continue
+
+        icon = category_icons.get(category, "📌")
+
+        # 调试日志：显示每个类别的新闻数量
+        print(f"[重要新闻分类] {icon} {category}: {len(news_list)} 条")
+        for news in news_list:
+            print(f"  - {news.get('title', '')[:50]}...")
+
         stats.append({
-            "word": "🔴 关键新闻",
-            "count": len(critical_news),
+            "word": f"{icon} {category}",
+            "count": len(news_list),
             "titles": [
                 {
                     "title": news.get("title", ""),
                     "source_name": news.get("platform_name", ""),
                     "url": news.get("url", ""),
-                    "mobile_url": news.get("url", ""),  # 使用相同URL
+                    "mobile_url": news.get("url", ""),
                     "ranks": [news.get("rank", 0)],
-                    "rank_threshold": 10,  # 排名阈值
-                    "time_display": "",  # 时间显示（重要新闻推送不需要）
-                    "count": 1,  # 出现次数
-                    "is_new": True,  # 标记为新增
+                    "rank_threshold": 10,
+                    "time_display": "",
+                    "count": 1,
+                    "is_new": True,
                 }
-                for news in critical_news
+                for news in news_list
             ],
         })
-    
-    # High 级别新闻
-    if high_news:
-        stats.append({
-            "word": "🟠 重要新闻",
-            "count": len(high_news),
-            "titles": [
-                {
-                    "title": news.get("title", ""),
-                    "source_name": news.get("platform_name", ""),
-                    "url": news.get("url", ""),
-                    "mobile_url": news.get("url", ""),  # 使用相同URL
-                    "ranks": [news.get("rank", 0)],
-                    "rank_threshold": 10,  # 排名阈值
-                    "time_display": "",  # 时间显示（重要新闻推送不需要）
-                    "count": 1,  # 出现次数
-                    "is_new": True,  # 标记为新增
-                }
-                for news in high_news
-            ],
-        })
-    
+
     # 构建 id_to_name 映射
     id_to_name = {}
     for news in important_news:
@@ -314,10 +374,10 @@ def _convert_important_news_to_report_data(important_news: List[Dict]) -> Dict:
         platform_name = news.get("platform_name", "")
         if platform_id and platform_name:
             id_to_name[platform_id] = platform_name
-    
+
     return {
         "stats": stats,
-        "new_titles": [],  # 重要新闻已经在 stats 中，不需要 new_titles
+        "new_titles": [],
         "failed_ids": [],
         "id_to_name": id_to_name,
         "total_new_count": len(important_news),
