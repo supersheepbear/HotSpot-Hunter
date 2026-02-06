@@ -358,6 +358,7 @@ class LocalStorageBackend(SQLiteStorageMixin, StorageBackend):
                                 notification_config=notification_config,
                                 get_time_func=get_time_func,
                                 split_content_func=split_content_func,
+                                ai_config=ai_config,
                             )
                             
                             # 输出推送结果

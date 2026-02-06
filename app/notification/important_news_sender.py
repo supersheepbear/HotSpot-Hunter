@@ -8,6 +8,8 @@
 from typing import List, Dict, Optional, Callable
 from datetime import datetime
 
+from app.utils.config_loader import load_analysis_config
+
 
 def _categorize_news(stats: List[Dict]) -> Dict[str, List[Dict]]:
     """
@@ -64,10 +66,11 @@ def send_important_news_to_all_channels(
     notification_config: Dict,
     get_time_func: Optional[Callable] = None,
     split_content_func: Optional[Callable] = None,
+    ai_config: Optional[Dict] = None,
 ) -> Dict[str, bool]:
     """
     推送重要新闻到所有配置的渠道
-    
+
     Args:
         important_news: 重要新闻列表，每个元素包含：
             - title: 新闻标题
@@ -79,20 +82,35 @@ def send_important_news_to_all_channels(
         notification_config: 推送通知配置字典
         get_time_func: 获取当前时间的函数
         split_content_func: 内容分批函数
-    
+        ai_config: AI配置（用于AI撰写模式）
+
     Returns:
         Dict[str, bool]: 每个渠道的发送结果
     """
     if not important_news:
         return {}
-    
+
     # 获取当前时间
     if get_time_func:
         now = get_time_func()
     else:
         now = datetime.now()
-    
-    # 将重要新闻转换为 report_data 格式
+
+    # 检查是否启用 AI 撰写模式
+    analysis_config = load_analysis_config()
+    ai_writing_config = analysis_config.get("ai_writing", {})
+    ai_writing_enabled = ai_writing_config.get("enabled", False)
+
+    if ai_writing_enabled:
+        return _send_with_ai_writing(
+            important_news=important_news,
+            notification_config=notification_config,
+            ai_writing_config=ai_writing_config,
+            ai_config=ai_config,
+            get_time_func=get_time_func,
+        )
+
+    # 原有逻辑：将重要新闻转换为 report_data 格式
     report_data = _convert_important_news_to_report_data(important_news)
     
     # 创建 NotificationDispatcher
@@ -382,6 +400,216 @@ def _convert_important_news_to_report_data(important_news: List[Dict]) -> Dict:
         "id_to_name": id_to_name,
         "total_new_count": len(important_news),
     }
+
+
+def _send_with_ai_writing(
+    important_news: List[Dict],
+    notification_config: Dict,
+    ai_writing_config: Dict,
+    ai_config: Optional[Dict] = None,
+    get_time_func: Optional[Callable] = None,
+) -> Dict[str, bool]:
+    """
+    使用 AI 撰写模式推送新闻摘要
+
+    Args:
+        important_news: 重要新闻列表
+        notification_config: 推送通知配置
+        ai_writing_config: AI 撰写配置
+        ai_config: AI 配置
+        get_time_func: 获取时间函数
+
+    Returns:
+        各渠道发送结果
+    """
+    import requests
+    from app.ai.news_writer import AINewsWriter
+    from app.notification.renderer import (
+        render_ai_digest_markdown,
+        render_ai_digest_discord,
+        render_ai_digest_plain,
+    )
+
+    results = {}
+
+    # 准备新闻数据
+    news_items = []
+    for news in important_news:
+        news_items.append({
+            "title": news.get("title", ""),
+            "url": news.get("url", ""),
+            "source": news.get("platform_name", ""),
+            "category": "",
+        })
+
+    # 生成 AI 摘要
+    print(f"[AI撰写模式] 正在生成 {len(news_items)} 条新闻的摘要...")
+    writer = AINewsWriter(
+        ai_config=ai_config,
+        writing_config=ai_writing_config,
+        get_time_func=get_time_func,
+    )
+    digest = writer.generate_digest(news_items)
+
+    if not digest.success:
+        print(f"[AI撰写模式] 生成摘要失败: {digest.error}")
+        return results
+
+    print(f"[AI撰写模式] 摘要生成成功，开始推送...")
+
+    include_sources = ai_writing_config.get("include_sources", True)
+
+    # 推送到 Discord
+    discord_url = notification_config.get("DISCORD_WEBHOOK_URL", "")
+    if discord_url:
+        content = render_ai_digest_discord(
+            digest.content,
+            digest.news_count,
+            digest.source_links if include_sources else None,
+            include_sources,
+            get_time_func,
+        )
+
+        # Discord 限制 2000 字符，需要分批发送
+        max_length = 1900  # 留一些余量
+        if len(content) <= max_length:
+            batches = [content]
+        else:
+            # 按段落分批
+            batches = []
+            current_batch = ""
+            for line in content.split('\n'):
+                if len(current_batch) + len(line) + 1 > max_length:
+                    if current_batch:
+                        batches.append(current_batch)
+                    current_batch = line + '\n'
+                else:
+                    current_batch += line + '\n'
+            if current_batch:
+                batches.append(current_batch)
+
+        try:
+            success = True
+            for i, batch in enumerate(batches, 1):
+                response = requests.post(
+                    discord_url,
+                    json={"content": batch},
+                    headers={"Content-Type": "application/json"},
+                    timeout=30,
+                )
+                if response.status_code != 204:
+                    success = False
+                    print(f"[AI撰写模式] Discord 推送失败 (批次 {i}/{len(batches)}): {response.status_code}")
+                    break
+                if len(batches) > 1:
+                    import time
+                    time.sleep(1)  # 避免速率限制
+
+            results["discord"] = success
+            if success:
+                if len(batches) > 1:
+                    print(f"[AI撰写模式] Discord 推送成功 ({len(batches)} 个批次)")
+                else:
+                    print(f"[AI撰写模式] Discord 推送成功")
+        except Exception as e:
+            print(f"[AI撰写模式] Discord 推送出错: {e}")
+            results["discord"] = False
+
+    # 推送到 Telegram
+    telegram_token = notification_config.get("TELEGRAM_BOT_TOKEN", "")
+    telegram_chat_id = notification_config.get("TELEGRAM_CHAT_ID", "")
+    if telegram_token and telegram_chat_id:
+        content = render_ai_digest_markdown(
+            digest.content,
+            digest.news_count,
+            digest.source_links if include_sources else None,
+            include_sources,
+            get_time_func,
+        )
+        try:
+            url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+            response = requests.post(
+                url,
+                json={
+                    "chat_id": telegram_chat_id,
+                    "text": content,
+                    "parse_mode": "Markdown",
+                    "disable_web_page_preview": True,
+                },
+                timeout=30,
+            )
+            success = response.status_code == 200
+            results["telegram"] = success
+            if success:
+                print(f"[AI撰写模式] Telegram 推送成功")
+            else:
+                print(f"[AI撰写模式] Telegram 推送失败: {response.status_code}")
+        except Exception as e:
+            print(f"[AI撰写模式] Telegram 推送出错: {e}")
+            results["telegram"] = False
+
+    # 推送到飞书
+    feishu_url = notification_config.get("FEISHU_WEBHOOK_URL", "")
+    if feishu_url:
+        content = render_ai_digest_plain(
+            digest.content,
+            digest.news_count,
+            get_time_func,
+        )
+        try:
+            response = requests.post(
+                feishu_url,
+                json={
+                    "msg_type": "text",
+                    "content": {"text": content},
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            success = response.status_code == 200
+            results["feishu"] = success
+            if success:
+                print(f"[AI撰写模式] 飞书推送成功")
+            else:
+                print(f"[AI撰写模式] 飞书推送失败: {response.status_code}")
+        except Exception as e:
+            print(f"[AI撰写模式] 飞书推送出错: {e}")
+            results["feishu"] = False
+
+    # 推送到钉钉
+    dingtalk_url = notification_config.get("DINGTALK_WEBHOOK_URL", "")
+    if dingtalk_url:
+        content = render_ai_digest_markdown(
+            digest.content,
+            digest.news_count,
+            digest.source_links if include_sources else None,
+            include_sources,
+            get_time_func,
+        )
+        try:
+            response = requests.post(
+                dingtalk_url,
+                json={
+                    "msgtype": "markdown",
+                    "markdown": {
+                        "title": "重要新闻摘要",
+                        "text": content,
+                    },
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=30,
+            )
+            success = response.status_code == 200
+            results["dingtalk"] = success
+            if success:
+                print(f"[AI撰写模式] 钉钉推送成功")
+            else:
+                print(f"[AI撰写模式] 钉钉推送失败: {response.status_code}")
+        except Exception as e:
+            print(f"[AI撰写模式] 钉钉推送出错: {e}")
+            results["dingtalk"] = False
+
+    return results
 
 
 # 保留旧函数名以保持兼容性（已废弃，使用 send_important_news_to_all_channels）

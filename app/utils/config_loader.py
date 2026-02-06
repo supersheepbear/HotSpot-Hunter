@@ -79,9 +79,75 @@ def load_ai_config(config_path: Optional[str] = None) -> Dict[str, Any]:
         print(f"[配置] 已加载AI配置: {config_path}")
         print(f"[配置] 最终配置: PROVIDER={ai_config['PROVIDER']}, MODEL={ai_config['MODEL']}, BASE_URL={ai_config['BASE_URL']}")
         return ai_config
-        
+
     except Exception as e:
         print(f"[配置] 加载AI配置失败: {e}，使用默认配置")
         return default_config
+
+
+def load_analysis_config(config_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    加载分析配置文件
+
+    Args:
+        config_path: 配置文件路径，如果为None则自动查找
+
+    Returns:
+        分析配置字典
+    """
+    if config_path is None:
+        project_root = Path(__file__).parent.parent.parent
+        config_path = project_root / "config" / "analysis_config.yaml"
+
+    config_path = Path(config_path)
+
+    # 默认配置
+    default_config = {
+        "analysis": {
+            "max_analyze_per_run": 500,
+            "batch_size": 200,
+        },
+        "push": {
+            "importance_levels": ["critical", "high"],
+            "max_push_per_run": 300,
+        },
+        "ai_writing": {
+            "enabled": False,
+            "style": "news_anchor",
+            "max_news_per_digest": 50,
+            "output_language": "zh",
+            "include_sources": True,
+            "group_by_topic": True,
+        },
+    }
+
+    if not config_path.exists():
+        print(f"[配置] 分析配置文件不存在: {config_path}，使用默认配置")
+        return default_config
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            file_config = yaml.safe_load(f) or {}
+
+        # 深度合并配置
+        config = _deep_merge(default_config, file_config)
+
+        print(f"[配置] 已加载分析配置: {config_path}")
+        return config
+
+    except Exception as e:
+        print(f"[配置] 加载分析配置失败: {e}，使用默认配置")
+        return default_config
+
+
+def _deep_merge(base: Dict, override: Dict) -> Dict:
+    """深度合并两个字典"""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 

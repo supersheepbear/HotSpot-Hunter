@@ -563,3 +563,114 @@ def _render_rss_section_markdown(rss_items: list) -> str:
         text_content += "\n"
 
     return text_content.rstrip("\n")
+
+
+# === AI 撰写模式渲染函数 ===
+
+def render_ai_digest_markdown(
+    digest_content: str,
+    news_count: int = 0,
+    source_links: list = None,
+    include_sources: bool = True,
+    get_time_func: Optional[Callable[[], datetime]] = None,
+) -> str:
+    """渲染 AI 撰写的新闻摘要（通用 Markdown 格式）
+
+    Args:
+        digest_content: AI 生成的摘要内容
+        news_count: 处理的新闻数量
+        source_links: 来源链接列表
+        include_sources: 是否包含来源链接
+        get_time_func: 获取当前时间的函数
+
+    Returns:
+        格式化的 Markdown 消息内容
+    """
+    now = get_time_func() if get_time_func else datetime.now()
+
+    if not digest_content:
+        return f"暂无重要新闻\n\n更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    # 构建输出
+    text_content = f"**今日要闻速览** ({news_count} 条新闻整合)\n\n"
+    text_content += "━━━━━━━━━━━━━━\n\n"
+    text_content += digest_content
+    text_content += "\n\n━━━━━━━━━━━━━━\n"
+
+    # 添加来源链接
+    if include_sources and source_links:
+        text_content += "\n**相关来源：**\n"
+        max_sources = 10
+        for link in source_links[:max_sources]:
+            title = link.get("title", "")
+            url = link.get("url", "")
+            source = link.get("source", "")
+            if url:
+                text_content += f"• [{title}]({url})"
+                if source:
+                    text_content += f" | {source}"
+                text_content += "\n"
+        if len(source_links) > max_sources:
+            text_content += f"• ...及其他 {len(source_links) - max_sources} 条来源\n"
+
+    text_content += f"\n更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    return text_content
+
+
+def render_ai_digest_discord(
+    digest_content: str,
+    news_count: int = 0,
+    source_links: list = None,
+    include_sources: bool = True,
+    get_time_func: Optional[Callable[[], datetime]] = None,
+) -> str:
+    """渲染 AI 撰写的新闻摘要（Discord 格式）"""
+    now = get_time_func() if get_time_func else datetime.now()
+
+    if not digest_content:
+        return f"暂无重要新闻\n\n更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    text_content = f"**今日要闻速览** ({news_count} 条新闻整合)\n"
+    text_content += "━━━━━━━━━━━━━━\n\n"
+    text_content += digest_content
+    text_content += "\n\n━━━━━━━━━━━━━━\n"
+
+    if include_sources and source_links:
+        text_content += "\n**相关来源：**\n"
+        max_sources = 8
+        for link in source_links[:max_sources]:
+            title = link.get("title", "")
+            url = link.get("url", "")
+            source = link.get("source", "")
+            if url:
+                text_content += f"• [{title}](<{url}>)"
+                if source:
+                    text_content += f" | {source}"
+                text_content += "\n"
+        if len(source_links) > max_sources:
+            text_content += f"• ...及其他 {len(source_links) - max_sources} 条来源\n"
+
+    text_content += f"\n更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    return text_content
+
+
+def render_ai_digest_plain(
+    digest_content: str,
+    news_count: int = 0,
+    get_time_func: Optional[Callable[[], datetime]] = None,
+) -> str:
+    """渲染 AI 撰写的新闻摘要（纯文本格式）"""
+    now = get_time_func() if get_time_func else datetime.now()
+
+    if not digest_content:
+        return f"暂无重要新闻\n\n更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    text_content = f"今日要闻速览 ({news_count} 条新闻整合)\n"
+    text_content += "━━━━━━━━━━━━━━\n\n"
+    text_content += digest_content
+    text_content += f"\n\n━━━━━━━━━━━━━━\n"
+    text_content += f"更新时间：{now.strftime('%Y-%m-%d %H:%M:%S')}"
+
+    return text_content
